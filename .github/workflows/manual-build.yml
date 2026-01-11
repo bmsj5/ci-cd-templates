@@ -2,16 +2,6 @@ name: Manual Build Pipeline
 
 on:
   workflow_dispatch:
-    inputs:
-      dockerfile:
-        description: 'Dockerfile to build'
-        required: true
-        default: 'Dockerfile.ansible.prod'
-        type: choice
-        options:
-          - 'Dockerfile.ansible.prod'
-          - 'Dockerfile.ansible.prod.lint'
-          - 'all'
 
 permissions:
   contents: read
@@ -20,17 +10,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        dockerfile: ${{ fromJson(github.event.inputs.dockerfile == 'all' && '["Dockerfile.ansible.prod", "Dockerfile.ansible.prod.lint"]' || format('["{0}"]', github.event.inputs.dockerfile)) }}
-      fail-fast: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build ${{ matrix.dockerfile }}
+      - name: Build Dockerfile.ansible.prod
         uses: ./.github/actions/build-image
         with:
-          image-name: ${{ matrix.dockerfile == 'Dockerfile.ansible.prod' && 'ansible-prod' || matrix.dockerfile == 'Dockerfile.ansible.prod.lint' && 'ansible-prod-lint' }}
-          dockerfile-path: ./${{ matrix.dockerfile }}
+          image-name: ansible-prod
+          dockerfile-path: ./Dockerfile.ansible.prod
           github-token: ${{ secrets.GITHUB_TOKEN }}

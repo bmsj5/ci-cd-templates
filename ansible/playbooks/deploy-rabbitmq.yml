@@ -54,6 +54,12 @@
               additionalPlugins:
                 - rabbitmq_prometheus
                 - rabbitmq_management
+            podTemplate:
+              metadata:
+                annotations:
+                  prometheus.io/scrape: "true"
+                  prometheus.io/port: "15692"
+                  prometheus.io/path: "/metrics"
       no_log: true
 
     - name: Create RabbitMQ Management Ingress

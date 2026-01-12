@@ -46,8 +46,7 @@ metrics:
     requests:
       cpu: 25m
       memory: 64Mi
-  service:
-    annotations:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "9121"
-      prometheus.io/path: "/metrics"
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+    prometheus.io/path: "/metrics"

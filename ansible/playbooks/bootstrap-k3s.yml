@@ -40,9 +40,10 @@
           kubelet-arg:
             - "cpu-manager-policy=static"
         mode: "0644"
-      register: cpu_manager_config
+      notify: apply cpu manager policy
 
-    - name: Clear CPU manager state file and restart K3s
+  handlers:
+    - name: apply cpu manager policy
       block:
         - name: Clear CPU manager state file
           ansible.builtin.file:
@@ -55,4 +56,3 @@
             name: k3s
             state: restarted
             daemon_reload: yes
-      when: cpu_manager_config.changed

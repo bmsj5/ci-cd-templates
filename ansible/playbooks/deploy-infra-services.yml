@@ -42,7 +42,7 @@
     - name: Install kube-state-metrics
       kubernetes.core.helm:
         name: kube-state-metrics
-        chart_ref: oci://ghcr.io/prometheus-community/kube-state-metrics
+        chart_ref: oci://ghcr.io/prometheus-community/charts/kube-state-metrics
         chart_version: 7.0.0
         release_namespace: kube-system
         create_namespace: true

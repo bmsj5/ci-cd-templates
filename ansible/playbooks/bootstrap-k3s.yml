@@ -33,12 +33,42 @@
         state: directory
         mode: "0755"
 
+    - name: Get number of CPU cores
+      ansible.builtin.command: nproc
+      register: cpu_cores_result
+      changed_when: false
+
+    - name: Calculate kube-reserved CPU using GKE formula
+      ansible.builtin.set_fact:
+        cpu_cores: "{{ cpu_cores_result.stdout | int }}"
+        reserved_cpu_m: >-
+          {%- set cores = cpu_cores_result.stdout | int -%}
+          {%- set total = 0 -%}
+          {%- if cores >= 1 -%}
+            {%- set total = total + 60 -%}
+            {%- if cores >= 2 -%}
+              {%- set total = total + 10 -%}
+              {%- if cores >= 4 -%}
+                {%- set total = total + 10 -%}
+                {%- if cores > 4 -%}
+                  {%- set total = total + ((cores - 4) * 2.5) | round(0, 'floor') | int -%}
+                {%- endif -%}
+              {%- elif cores == 3 -%}
+                {%- set total = total + 5 -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- else -%}
+            {%- set total = 60 -%}
+          {%- endif -%}
+          {{ total | int }}
+
     - name: Configure static CPU manager policy
       ansible.builtin.copy:
         dest: /etc/rancher/k3s/config.yaml.d/99-cpu-manager.yaml
         content: |
           kubelet-arg:
             - "cpu-manager-policy=static"
+            - "system-reserved=cpu={{ reserved_cpu_m }}m"
         mode: "0644"
       notify: apply cpu manager policy
 

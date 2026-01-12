@@ -23,17 +23,6 @@ replica:
     requests:
       cpu: 100m
       memory: 256Mi
-  nodeSelector: {}
-  affinity:
-    podAntiAffinity:
-      preferredDuringSchedulingIgnoredDuringExecution:
-        - weight: 100
-          podAffinityTerm:
-            labelSelector:
-              matchLabels:
-                app.kubernetes.io/name: redis
-                app.kubernetes.io/component: node  # Updated for sentinel mode
-            topologyKey: kubernetes.io/hostname
 
 sentinel:
   enabled: true

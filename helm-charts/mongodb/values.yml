@@ -31,23 +31,17 @@ persistence:
   storageClass: local-path
 
 # Resources
+# CRITICAL: For CPU pinning with static CPU manager:
+# - requests.cpu MUST equal limits.cpu (Guaranteed QoS)
+# - Both MUST be integers (whole numbers, not fractional like 500m)
+# - K3s will exclusively pin this pod to dedicated CPU cores
 resources:
   limits:
-    cpu: 500m
+    cpu: 1
     memory: 1Gi
   requests:
-    cpu: 200m
+    cpu: 1
     memory: 256Mi
-
-# Pod anti-affinity (spread across nodes)
-podAntiAffinity: preferred
-affinity: {}
-
-# Service configuration
-service:
-  type: ClusterIP
-  ports:
-    mongodb: 27017
 
 # MongoDB Exporter for Prometheus metrics
 # Exposes metrics on port 9216

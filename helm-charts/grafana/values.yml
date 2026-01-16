@@ -11,8 +11,8 @@ resources:
     cpu: 300m
     memory: 512Mi
   requests:
-    cpu: 50m
-    memory: 128Mi
+    cpu: 100m
+    memory: 256Mi
 
 # External PostgreSQL database configuration (required for HA)
 # Configured via environment variables

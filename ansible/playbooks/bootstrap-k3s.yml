@@ -96,17 +96,6 @@
             coredns_replicas: "{{ groups['all'] | length if (groups['all'] | length <= 3) else 3 }}"
             coredns_pdb_min: "{{ (groups['all'] | length - 1) if (groups['all'] | length > 1 and groups['all'] | length <= 3) else 2 }}"
 
-        - name: Wait for CoreDNS deployment to be available
-          ansible.builtin.command:
-            cmd: kubectl get deployment coredns -n kube-system
-          environment:
-            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-          register: coredns_exists
-          retries: 30
-          delay: 10
-          until: coredns_exists.rc == 0
-          changed_when: false
-
         - name: Scale CoreDNS deployment replicas to {{ coredns_replicas }}
           ansible.builtin.command:
             cmd: kubectl scale deployment coredns -n kube-system --replicas={{ coredns_replicas }}

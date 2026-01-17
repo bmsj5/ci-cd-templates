@@ -107,7 +107,7 @@
           until: coredns_exists.rc == 0
           changed_when: false
 
-        - name: Scale CoreDNS deployment to {{ coredns_replicas }} replicas
+        - name: Scale CoreDNS deployment replicas to {{ coredns_replicas }}
           ansible.builtin.command:
             cmd: kubectl scale deployment coredns -n kube-system --replicas={{ coredns_replicas }}
           environment:
@@ -140,10 +140,9 @@
             - topology_result.rc != 0
             - "'already exists' not in topology_result.stderr"
 
-        - name: Create PodDisruptionBudget for CoreDNS
-          ansible.builtin.shell:
-            cmd: kubectl apply -f -
-            stdin: |
+        - name: Create PodDisruptionBudget manifest for CoreDNS
+          ansible.builtin.copy:
+            content: |
               apiVersion: policy/v1
               kind: PodDisruptionBudget
               metadata:
@@ -154,7 +153,18 @@
                 selector:
                   matchLabels:
                     k8s-app: kube-dns
+            dest: /tmp/coredns-pdb.yaml
+            mode: '0644'
+
+        - name: Create PodDisruptionBudget for CoreDNS
+          ansible.builtin.command:
+            cmd: kubectl apply -f /tmp/coredns-pdb.yaml
           environment:
             KUBECONFIG: /etc/rancher/k3s/k3s.yaml
           register: pdb_result
           changed_when: "'created' in pdb_result.stdout or 'configured' in pdb_result.stdout"
+
+        - name: Remove temporary PDB manifest
+          ansible.builtin.file:
+            path: /tmp/coredns-pdb.yaml
+            state: absent

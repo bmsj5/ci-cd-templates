@@ -24,10 +24,10 @@ vmselect:
   resources:
     limits:
       cpu: 200m
-      memory: 256Mi
+      memory: 384Mi
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 256Mi
   extraArgs:
     envflag.enable: "true"
     envflag.prefix: VM_
@@ -41,7 +41,7 @@ vmstorage:
       memory: 512Mi
     requests:
       cpu: 50m
-      memory: 256Mi
+      memory: 384Mi
   extraArgs:
     envflag.enable: "true"
     envflag.prefix: VM_

@@ -83,8 +83,8 @@
         daemon_reload: yes
 
     # Configure CoreDNS High Availability
-    # K3s manages CoreDNS via HelmChart addons. We override the default replica count
-    # by creating a HelmChartConfig resource that K3s automatically applies.
+    # K3s v1.35+ deploys CoreDNS as a regular Deployment
+    # We need to patch the deployment directly to scale it and add HA features
     # Only run on the first control-plane node to avoid conflicts.
     - name: Configure CoreDNS HA
       when:
@@ -94,36 +94,57 @@
         - name: Calculate CoreDNS replica count
           ansible.builtin.set_fact:
             coredns_replicas: "{{ groups['all'] | length if (groups['all'] | length <= 3) else 3 }}"
+            coredns_pdb_min: "{{ (groups['all'] | length - 1) if (groups['all'] | length > 1 and groups['all'] | length <= 3) else 2 }}"
 
-        - name: Deploy CoreDNS HelmChartConfig for HA
-          ansible.builtin.copy:
-            dest: /var/lib/rancher/k3s/server/manifests/coredns-ha-config.yaml
-            content: |
-              ---
-              apiVersion: helm.cattle.io/v1
-              kind: HelmChartConfig
+        - name: Scale CoreDNS deployment to {{ coredns_replicas }} replicas
+          kubernetes.core.k8s:
+            state: patched
+            kind: Deployment
+            name: coredns
+            namespace: kube-system
+            definition:
+              spec:
+                replicas: "{{ coredns_replicas | int }}"
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+        - name: Add topology spread constraints to CoreDNS
+          kubernetes.core.k8s:
+            state: patched
+            kind: Deployment
+            name: coredns
+            namespace: kube-system
+            definition:
+              spec:
+                template:
+                  spec:
+                    topologySpreadConstraints:
+                      - maxSkew: 1
+                        topologyKey: kubernetes.io/hostname
+                        whenUnsatisfiable: DoNotSchedule
+                        labelSelector:
+                          matchLabels:
+                            k8s-app: kube-dns
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+        - name: Create PodDisruptionBudget for CoreDNS
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: policy/v1
+              kind: PodDisruptionBudget
               metadata:
                 name: coredns
                 namespace: kube-system
               spec:
-                valuesContent: |-
-                  replicaCount: {{ coredns_replicas }}
-                  topologySpreadConstraints:
-                    - maxSkew: 1
-                      topologyKey: kubernetes.io/hostname
-                      whenUnsatisfiable: DoNotSchedule
-                      labelSelector:
-                        matchLabels:
-                          k8s-app: kube-dns
-                  podDisruptionBudget:
-                    minAvailable: {{ (coredns_replicas | int - 1) if (coredns_replicas | int > 1) else 1 }}
-            mode: "0644"
+                minAvailable: "{{ coredns_pdb_min | int }}"
+                selector:
+                  matchLabels:
+                    k8s-app: kube-dns
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
           notify: Wait for CoreDNS rollout
-
-        - name: Wait for K3s to process HelmChartConfig
-          ansible.builtin.pause:
-            seconds: 10
-            prompt: "Waiting for K3s to detect and apply CoreDNS HelmChartConfig..."
 
   handlers:
     - name: Wait for CoreDNS rollout

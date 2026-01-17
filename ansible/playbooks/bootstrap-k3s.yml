@@ -81,3 +81,59 @@
         name: k3s
         state: restarted
         daemon_reload: yes
+
+    # Configure CoreDNS High Availability
+    # K3s manages CoreDNS via HelmChart addons. We override the default replica count
+    # by creating a HelmChartConfig resource that K3s automatically applies.
+    # Only run on the first control-plane node to avoid conflicts.
+    - name: Configure CoreDNS HA
+      when:
+        - k3s_control_node | bool
+        - inventory_hostname == groups['all'][0]
+      block:
+        - name: Calculate CoreDNS replica count
+          ansible.builtin.set_fact:
+            coredns_replicas: "{{ groups['all'] | length if (groups['all'] | length <= 3) else 3 }}"
+
+        - name: Deploy CoreDNS HelmChartConfig for HA
+          ansible.builtin.copy:
+            dest: /var/lib/rancher/k3s/server/manifests/coredns-ha-config.yaml
+            content: |
+              ---
+              apiVersion: helm.cattle.io/v1
+              kind: HelmChartConfig
+              metadata:
+                name: coredns
+                namespace: kube-system
+              spec:
+                valuesContent: |-
+                  replicaCount: {{ coredns_replicas }}
+                  topologySpreadConstraints:
+                    - maxSkew: 1
+                      topologyKey: kubernetes.io/hostname
+                      whenUnsatisfiable: DoNotSchedule
+                      labelSelector:
+                        matchLabels:
+                          k8s-app: kube-dns
+                  podDisruptionBudget:
+                    minAvailable: {{ (coredns_replicas | int - 1) if (coredns_replicas | int > 1) else 1 }}
+            mode: "0644"
+          notify: Wait for CoreDNS rollout
+
+        - name: Wait for K3s to process HelmChartConfig
+          ansible.builtin.pause:
+            seconds: 10
+            prompt: "Waiting for K3s to detect and apply CoreDNS HelmChartConfig..."
+
+  handlers:
+    - name: Wait for CoreDNS rollout
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/coredns -n kube-system
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: coredns_rollout
+      changed_when: false
+      failed_when: false
+      retries: 30
+      delay: 10
+      until: coredns_rollout.rc == 0

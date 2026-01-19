@@ -1,0 +1,384 @@
+mode: daemonset
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 384Mi
+  requests:
+    cpu: 50ms
+    memory: 256Mi
+
+presets:
+  kubernetesAttributes:
+    enabled: true
+  kubeletMetrics:
+    enabled: true
+
+clusterRole:
+  # create is automatically true when presets are enabled, but harmless to keep explicit
+  create: true
+  rules:
+    # Additional permissions beyond what presets provide:
+    # - loadbalancing exporter needs to discover backend pods via K8s service discovery
+    # - prometheus receiver with kubernetes_sd_configs needs pod/node discovery
+    - apiGroups: [""]
+      resources: ["pods", "endpoints", "nodes", "namespaces", "services"]
+      verbs: ["get", "watch", "list"]
+    # Permissions for service discovery (endpointslices)
+    - apiGroups: ["discovery.k8s.io"]
+      resources: ["endpointslices"]
+      verbs: ["get", "list", "watch"]
+    # Permission to scrape API server metrics endpoint
+    - nonResourceURLs: ["/metrics"]
+      verbs: ["get"]
+      
+service:
+  enabled: true
+  type: ClusterIP
+  internalTrafficPolicy: Local
+
+extraEnvs:
+  - name: OPENOBSERVE_AUTH_B64
+    valueFrom:
+      secretKeyRef:
+        name: openobserve-creds
+        key: auth_b64
+  - name: K8S_NODE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+  - name: APP_NAME
+    valueFrom:
+      configMapKeyRef:
+        name: otel-env-labels
+        key: APP_NAME
+  - name: APP_VERSION
+    valueFrom:
+      configMapKeyRef:
+        name: otel-env-labels
+        key: APP_VERSION
+  - name: REGION
+    valueFrom:
+      configMapKeyRef:
+        name: otel-env-labels
+        key: REGION
+  - name: CLUSTER_ID
+    valueFrom:
+      configMapKeyRef:
+        name: otel-env-labels
+        key: CLUSTER_ID
+  - name: DEPLOYMENT_ENV
+    valueFrom:
+      configMapKeyRef:
+        name: otel-env-labels
+        key: DEPLOYMENT_ENV
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+    kubeletstats:
+      collection_interval: 15s
+      auth_type: serviceAccount
+      endpoint: 'https://${env:K8S_NODE_NAME}:10250'
+      insecure_skip_verify: true
+      metric_groups:
+        - node
+        - pod
+        - container
+        - volume
+    prometheus:
+      config:
+        scrape_configs:
+          # -----------------------------------------------------------------------
+          # MONGODB
+          # -----------------------------------------------------------------------
+          - job_name: 'mongodb-exporter'
+            scrape_interval: 30s
+            scrape_timeout: 25s
+            metrics_path: /metrics
+
+            kubernetes_sd_configs:
+              - role: pod
+
+            relabel_configs:
+              # 1. Filter: Only scrape pods on THIS node
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                regex: ${env:K8S_NODE_NAME}
+                action: keep
+              # 2. Filter: Target the specific MongoDB metrics port
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "9216"
+                action: keep
+              # 3. Filter: Ensure it's a mongo pod
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                regex: .*mongodb.*
+                action: keep
+
+            metric_relabel_configs:
+              # Keep essential MongoDB metrics for Grafana dashboard
+              - source_labels: [__name__]
+                regex: 'mongodb_(connections|instance_uptime_seconds|op_counters_total|mongod_op_latencies.*|memory.*|mongod_replset_(number_of_members|oplog_head_timestamp)|rs_members_state|ss_network_bytes(In|Out)|mongod_metrics_document_total)'
+                action: keep                        
+
+          # -----------------------------------------------------------------------
+          # REDIS
+          # -----------------------------------------------------------------------
+          - job_name: 'redis-exporter'
+            scrape_interval: 15s
+            metrics_path: /metrics
+            
+            kubernetes_sd_configs:
+              - role: pod
+
+            relabel_configs:
+              # 1. Filter: Only scrape pods on THIS node
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                regex: ${env:K8S_NODE_NAME}
+                action: keep
+              # 2. Filter: Target the specific Redis metrics port
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "9121"
+                action: keep
+              # 3. Filter: Ensure it's a redis pod
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                regex: .*redis.*
+                action: keep
+
+            metric_relabel_configs:
+              # Keep essential Redis metrics for Grafana dashboard
+              - source_labels: [__name__]
+                regex: 'redis_(uptime_in_seconds|connected_clients|config_maxclients|memory_(used_bytes|max_bytes|used_peak_bytes|used_lua_bytes|used_dataset_bytes|used_overhead_bytes|used_rss_bytes)|commands_(processed_total|duration_seconds_total)|keyspace_(hits_total|misses_total)|net_(input_bytes_total|output_bytes_total)|db_(keys|avg_ttl_seconds)|expired_keys_total|evicted_keys_total|blocked_clients|rejected_connections_total|slowlog_last_id|cpu_(sys|user)_(seconds_total|children_seconds_total))'
+                action: keep                              
+          
+          # -----------------------------------------------------------------------
+          # RABBITMQ
+          # -----------------------------------------------------------------------
+          - job_name: 'rabbitmq-metrics'
+            scrape_interval: 15s
+            metrics_path: /metrics
+            
+            kubernetes_sd_configs:
+              - role: pod
+
+            relabel_configs:
+              # 1. Filter: Only scrape pods on THIS node
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                regex: ${env:K8S_NODE_NAME}
+                action: keep
+              # 2. Filter: Target the RabbitMQ Management port
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "15692"
+                action: keep
+              # 3. Filter: Ensure it's a rabbitmq pod
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                regex: .*rabbitmq.*
+                action: keep
+
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: 'rabbitmq_(queue_(messages(_(ready|unacked))?|consumers)|queues(_declared_total|_created_total|_deleted_total)?|node_(memory|disk)|connections(_opened_total|_closed_total)?|channels(_opened_total|_closed_total)?|exchanges|global_(publishers|consumers|messages_(received_total|routed_total|unroutable_dropped_total|unroutable_returned_total|received_confirm_total|confirmed_total|delivered_total|delivered_consume_manual_ack_total|acknowledged_total|get_empty_total|redelivered_total|delivered_consume_auto_ack_total|delivered_get_auto_ack_total|delivered_get_manual_ack_total))|resident_memory_limit_bytes|process_(open|max)_fds|process_resident_memory_bytes|disk_space_available_bytes|erlang_uptime_seconds)'
+                action: keep
+
+          # -----------------------------------------------------------------------
+          # KUBE-STATE-METRICS (Cluster State Metrics)
+          # -----------------------------------------------------------------------
+          - job_name: 'kube-state-metrics'
+            scrape_interval: 15s
+            metrics_path: /metrics
+            honor_labels: true  # KSM uses well-defined labels, honor them
+
+            kubernetes_sd_configs:
+              - role: pod
+
+            relabel_configs:
+              # 1. Filter: Only kube-state-metrics pods
+              # Match either modern label (app.kubernetes.io/name)
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                separator: ";"
+                regex: ".*kube-state-metrics.*"
+                action: keep  
+              # 2. Filter: Target the metrics port (typically 8080, sometimes 8081)
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "(8080|8081)"
+                action: keep
+              # Note: __address__ is automatically set to <pod_ip>:<port> by kubernetes_sd_configs
+              # 3. Filter: Only scrape KSM pods on THIS node (prevents duplicates from DaemonSet)
+              # KSM is a single pod, so only the collector on KSM's node will scrape it
+              # If KSM moves to another node, that collector will pick it up automatically
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                regex: ${env:K8S_NODE_NAME}
+                action: keep
+
+            metric_relabel_configs:
+              # Keep essential cluster state metrics for Grafana dashboard
+              - source_labels: [__name__]
+                regex: '(kube_(deployment_(spec_replicas|status_replicas|status_replicas_(available|unavailable|ready)|status_observed_generation|metadata_generation|labels)|replicaset_(spec_replicas|status_replicas|status_ready_replicas)|pod_(status_(phase|ready|condition|qos_class|reason|scheduled)|container_(status_(restarts_total|ready|waiting|waiting_reason|running|terminated|last_terminated_reason|last_terminated_exitcode)|resource_(requests|limits)|info)|spec_volumes_persistentvolumeclaim_info|info)|node_(status_(condition|allocatable|capacity)|info)|namespace_(labels|annotations|created)|service_(info|spec_type)|endpoint_(info|address_(available|not_ready))|ingress_info|daemonset_(status_(desired_number_scheduled|number_ready|number_available|number_misscheduled)|labels)|statefulset_(replicas|status_replicas|status_replicas_ready|labels)|cronjob_info|job_status_(failed|succeeded|active)|horizontalpodautoscaler_(status_(current_replicas|desired_replicas)|info)|persistentvolumeclaim_(status_(phase|resource_requests_storage_bytes|capacity_bytes)|info)|configmap_info|secret_info|networkpolicy_labels))'
+                action: keep
+
+          # -----------------------------------------------------------------------
+          # KUBERNETES API SERVER
+          # -----------------------------------------------------------------------
+          # NOTE: API server scraping has been moved to a dedicated Deployment
+          # (otel-collector-apiserver) with 1 replica to avoid duplication.
+          
+          # -----------------------------------------------------------------------
+          # COREDNS
+          # -----------------------------------------------------------------------
+          - job_name: 'coredns'
+            scrape_interval: 15s
+            metrics_path: /metrics
+            
+            kubernetes_sd_configs:
+              - role: pod
+
+            relabel_configs:
+              # 1. Filter: Only scrape pods on THIS node
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                regex: ${env:K8S_NODE_NAME}
+                action: keep
+              # 2. Filter: Target the CoreDNS metrics port
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "9153"
+                action: keep
+              # 3. Filter: Ensure it is CoreDNS (Label Selector)
+              - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+                regex: kube-dns|coredns
+                action: keep
+
+            metric_relabel_configs:
+              # Keep essential CoreDNS metrics
+              - source_labels: [__name__]
+                regex: '(coredns_(dns_request_duration_seconds_.*|dns_requests_total|dns_responses_total|dns_request_size_bytes_.*|dns_response_size_bytes_.*|proxy_request_duration_seconds_.*|panic_count_total|cache_.*)|process_cpu_seconds_total|process_resident_memory_bytes|up)'
+                action: keep
+
+          # -----------------------------------------------------------------------
+          # TRAEFIK
+          # -----------------------------------------------------------------------
+          - job_name: 'traefik'
+            scrape_interval: 15s
+            metrics_path: /metrics
+            
+            kubernetes_sd_configs:
+              - role: pod
+
+            relabel_configs:
+              # 1. Filter: Only scrape pods on THIS node
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                regex: ${env:K8S_NODE_NAME}
+                action: keep
+              # 2. Filter: Identify Traefik pods
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                regex: traefik.*
+                action: keep
+              # 3. Filter: Find the metrics port.
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "9100" 
+                action: keep
+
+            metric_relabel_configs:
+              # Keep essential Traefik metrics
+              - source_labels: [__name__]
+                regex: 'traefik_(entrypoint_(requests_total|request_duration_seconds_.*)|service_(requests_total|request_duration_seconds_.*|open_connections|requests_bytes_total|responses_bytes_total)|config_reloads_total)'
+                action: keep
+
+  processors:
+    # Add external labels as resource attributes
+    resource:
+      attributes:
+        - key: app.name
+          value: ${env:APP_NAME}
+          action: upsert
+        - key: app.version
+          value: ${env:APP_VERSION}
+          action: upsert
+        - key: region
+          value: ${env:REGION}
+          action: upsert
+        - key: cluster.id
+          value: ${env:CLUSTER_ID}
+          action: upsert
+        - key: env
+          value: ${env:DEPLOYMENT_ENV}
+          action: upsert
+    # Convert these attributes to strings (Helm's toYaml strips quotes, causing them to be parsed as integers, like 1 instead of "1")
+    # Using Concat() to convert to string since there's no string() function in OTTL
+    transform:
+      error_mode: ignore
+      trace_statements:
+        - context: resource
+          statements:
+            - set(attributes["cluster.id"], Concat([attributes["cluster.id"]], ""))
+      metric_statements:
+        - context: resource
+          statements:
+            - set(attributes["cluster.id"], Concat([attributes["cluster.id"]], ""))
+      log_statements:
+        - context: resource
+          statements:
+            - set(attributes["cluster.id"], Concat([attributes["cluster.id"]], ""))
+    k8sattributes:
+      auth_type: serviceAccount
+      extract:
+        metadata:
+          - k8s.pod.name
+          - k8s.namespace.name
+          - k8s.node.name
+    batch:
+      timeout: 5s
+
+  exporters:
+    prometheusremotewrite:
+      endpoint: "http://vm-vminsert.victoria-metrics.svc.cluster.local:8480/insert/0/prometheus"
+      tls:
+        insecure: true
+      resource_to_telemetry_conversion:
+        enabled: true
+      remote_write_queue:
+        queue_size: 20  # ~60 MB max (20 batches × 3 MB per batch)
+      retry_on_failure:
+        max_elapsed_time: 2m
+
+    otlp/logs:
+      endpoint: o2-openobserve-router.openobserve.svc.cluster.local:5081
+      tls:
+        insecure: true
+      headers:
+        organization: "SkiesDota"
+        stream-name: "services"
+        Authorization: "${env:OPENOBSERVE_AUTH_B64}"
+      sending_queue:
+        queue_size: 5  # ~60 MB max (5 batches × ~12 MB per batch)
+      retry_on_failure:
+        max_elapsed_time: 2m
+
+    loadbalancing:
+      routing_key: "traceID"
+      resolver:
+        k8s:
+          service: "otel-collector-backend-opentelemetry-collector"
+          ports: [4317]
+      protocol:
+        otlp:
+          tls:
+            insecure: true
+
+  service:
+    pipelines:
+      metrics:
+        receivers: [otlp, kubeletstats, prometheus]
+        processors: [resource, transform, k8sattributes, batch]
+        exporters: [prometheusremotewrite]
+      logs:
+        receivers: [otlp]
+        processors: [resource, transform, k8sattributes, batch]
+        exporters: [otlp/logs]
+      traces:
+        receivers: [otlp]
+        processors: [resource, transform, k8sattributes, batch]
+        exporters: [loadbalancing]

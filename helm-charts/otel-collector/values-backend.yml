@@ -1,0 +1,62 @@
+mode: deployment
+replicaCount: 3
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 384Mi
+  requests:
+    cpu: 50ms
+    memory: 256Mi
+
+service:
+  clusterIP: None
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+
+    # TAIL SAMPLING LOGIC
+    tail_sampling:
+      decision_wait: 10s
+      num_traces: 1200  # Holds ~2 minutes of traces at 10 traces/sec
+      expected_new_traces_per_sec: 10  # Adjust based on actual traffic
+      policies:
+        - name: keep_errors
+          type: status_code
+          status_code: {status_codes: [ERROR]}
+        - name: probabilistic_10_percent
+          type: probabilistic
+          probabilistic: {sampling_percentage: 10}
+
+    batch:
+      timeout: 10s
+
+  exporters:
+    otlp/traces:
+      endpoint: tempo-distributor.tempo.svc.cluster.local:4317
+      tls:
+        insecure: true
+      sending_queue:
+        queue_size: 5  # ~60 MB max (5 batches × ~12 MB per batch)
+      retry_on_failure:
+        max_elapsed_time: 2m
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, tail_sampling, batch]
+        exporters: [otlp/traces]

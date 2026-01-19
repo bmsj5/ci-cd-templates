@@ -1,0 +1,96 @@
+---
+- name: Deploy OTEL Collectors to K3s Cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    # ---------------------------------------------------------
+    # Setup
+    # ---------------------------------------------------------
+    - name: Create the 'otel-collector' namespace
+      kubernetes.core.k8s:
+        kind: Namespace
+        name: otel-collector
+        state: present
+
+    - name: Create base64 encoded Basic auth header for OpenObserve
+      ansible.builtin.set_fact:
+        openobserve_auth_b64: >-
+          {{ ((lookup('env', 'ZO_ROOT_USER_EMAIL') + ':' +
+          lookup('env', 'ZO_ROOT_USER_PASSWORD')) | b64encode | string) |
+          regex_replace('\\n', '') }}
+      no_log: true
+
+    - name: Create the OpenObserve credentials secret for OTEL Collector
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: openobserve-creds
+            namespace: otel-collector
+          stringData:
+            auth_b64: "Basic {{ openobserve_auth_b64 }}"
+      no_log: true
+
+    - name: Create ConfigMap with environment labels
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: otel-env-labels
+            namespace: otel-collector
+          data:
+            APP_NAME: "{{ lookup('env', 'APP_NAME') }}"
+            APP_VERSION: "{{ lookup('env', 'APP_VERSION') }}"
+            REGION: "{{ lookup('env', 'REGION') }}"
+            CLUSTER_ID: "{{ lookup('env', 'CLUSTER_ID') }}"
+            DEPLOYMENT_ENV: "{{ lookup('env', 'DEPLOYMENT_ENV') }}"
+
+    # ---------------------------------------------------------
+    # OTEL Collector Gateway
+    # ---------------------------------------------------------
+    - name: Deploy OTEL Collector Gateway
+      kubernetes.core.helm:
+        name: otel-collector
+        chart_ref: oci://ghcr.io/open-telemetry/opentelemetry-helm-charts/opentelemetry-collector
+        chart_version: 0.142.1
+        release_namespace: otel-collector
+        create_namespace: true
+        wait: true
+        timeout: 5m
+        values_files:
+          - "/workspace/helm-charts/otel-collector/values-gateway.yml"
+
+    # ---------------------------------------------------------
+    # OTEL Collector API Server
+    # ---------------------------------------------------------
+    - name: Deploy OTEL Collector for API Server (Single Replica)
+      kubernetes.core.helm:
+        name: otel-collector-apiserver
+        chart_ref: oci://ghcr.io/open-telemetry/opentelemetry-helm-charts/opentelemetry-collector
+        chart_version: 0.142.1
+        release_namespace: otel-collector
+        create_namespace: true
+        wait: true
+        timeout: 5m
+        values_files:
+          - "/workspace/helm-charts/otel-collector/values-apiserver.yml"
+
+    # ---------------------------------------------------------
+    # OTEL Collector Backend
+    # ---------------------------------------------------------
+    - name: Deploy OTEL Collector Backend (Tail Sampling)
+      kubernetes.core.helm:
+        name: otel-collector-backend
+        chart_ref: oci://ghcr.io/open-telemetry/opentelemetry-helm-charts/opentelemetry-collector
+        chart_version: 0.142.1
+        release_namespace: otel-collector
+        create_namespace: true
+        wait: true
+        timeout: 5m
+        values_files:
+          - "/workspace/helm-charts/otel-collector/values-backend.yml"

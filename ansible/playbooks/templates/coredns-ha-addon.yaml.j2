@@ -1,3 +1,6 @@
+---
+# We only define the Deployment to override Replicas, Resources, and Placement.
+# K3s will merge this with the existing CoreDNS setup.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,12 +12,13 @@ spec:
     spec:
       containers:
       - name: coredns
-        resources:
+        # Guaranteed QoS
+        resources: 
           requests:
             cpu: "200m"
             memory: "128Mi"
           limits:
-            cpu: "200m"   # Guaranteed QoS
+            cpu: "200m" 
             memory: "128Mi"
       topologySpreadConstraints:
         - maxSkew: 1
@@ -23,3 +27,14 @@ spec:
           labelSelector:
             matchLabels:
               k8s-app: kube-dns
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      k8s-app: kube-dns

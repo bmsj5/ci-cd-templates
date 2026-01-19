@@ -90,12 +90,6 @@
         - k3s_control_node | bool
         - inventory_hostname == groups['all'][0]
       block:
-        - name: Ensure K3s server manifests directory exists
-          ansible.builtin.file:
-            path: /var/lib/rancher/k3s/server/manifests
-            state: directory
-            mode: "0755"
-
         - name: Deploy CoreDNS HA addon manifest
           ansible.builtin.template:
             src: coredns-ha-addon.yaml.j2

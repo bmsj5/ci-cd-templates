@@ -7,13 +7,15 @@ spec:
   valuesContent: |-
     deployment:
       replicas: 3
+    # Guaranteed QoS & CPU Pinning
     resources:
       requests:
-        cpu: "1"        # Triggers exclusive CPU pinning
+        cpu: "1"
         memory: "512Mi"
       limits:
-        cpu: "1"        # Matches request for Guaranteed QoS
+        cpu: "1"
         memory: "512Mi"
+    # Ensure 1 replica per node
     topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
@@ -24,9 +26,7 @@ spec:
     ports:
       web:
         hostPort: 80
-        expose: true
       websecure:
         hostPort: 443
-        expose: true
     service:
-      type: ClusterIP  # No external LoadBalancer needed with hostPort
+      type: ClusterIP

@@ -75,14 +75,7 @@
             - "cpu-manager-policy=static"
             - "system-reserved=cpu={{ reserved_cpu_m }}m"
         mode: "0644"
-      register: cpu_manager_config
-
-    - name: Restart K3s to apply CPU manager policy if config changed
-      ansible.builtin.systemd:
-        name: k3s
-        state: restarted
-        daemon_reload: yes
-      when: cpu_manager_config.changed
+      notify: Restart K3s
 
     - name: Deploy Traefik HA HelmChartConfig manifest
       when:
@@ -92,6 +85,13 @@
         src: traefik-ha-helmchartconfig.yaml.j2
         dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
         mode: "0644"
+
+  handlers:
+    - name: Restart K3s
+      ansible.builtin.systemd:
+        name: k3s
+        state: restarted
+        daemon_reload: yes
 
 - name: Configure HA Components
   hosts: localhost

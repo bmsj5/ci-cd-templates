@@ -104,11 +104,17 @@
     local_kubeconfig: "/tmp/k3s-config-{{ k3s_api_server }}.yaml"
   tasks:
     - name: Fetch kubeconfig from control plane
-      ansible.builtin.fetch:
+      ansible.builtin.slurp:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: "{{ local_kubeconfig }}"
-        flat: true
       delegate_to: "{{ k3s_api_server }}"
+      register: kubeconfig_content
+      run_once: true
+
+    - name: Write kubeconfig to local file
+      ansible.builtin.copy:
+        content: "{{ kubeconfig_content.content | b64decode }}"
+        dest: "{{ local_kubeconfig }}"
+        mode: "0600"
       run_once: true
 
     - name: Update kubeconfig to point to the remote node IP

@@ -104,15 +104,16 @@
     local_kubeconfig: "/tmp/k3s-config-{{ k3s_api_server }}.yaml"
   tasks:
     - name: Fetch kubeconfig from control plane
-      ansible.builtin.slurp:
-        src: /etc/rancher/k3s/k3s.yaml
+      ansible.builtin.command:
+        cmd: cat /etc/rancher/k3s/k3s.yaml
       delegate_to: "{{ k3s_api_server }}"
       register: kubeconfig_content
       run_once: true
+      changed_when: false
 
     - name: Write kubeconfig to local file
       ansible.builtin.copy:
-        content: "{{ kubeconfig_content.content | b64decode }}"
+        content: "{{ kubeconfig_content.stdout }}"
         dest: "{{ local_kubeconfig }}"
         mode: "0600"
       run_once: true

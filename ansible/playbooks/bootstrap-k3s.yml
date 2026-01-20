@@ -23,9 +23,11 @@
     - role: xanmanning.k3s
 
   post_tasks:
+    # -------------------------------------------------------------
     # Enable static CPU manager policy for CPU pinning
     # Official K3s method: https://docs.k3s.io/installation/configuration
     # This enables dedicated CPU cores for pods with Guaranteed QoS (integer CPU requests == limits)
+    # -------------------------------------------------------------
     - name: Ensure K3s config directory exists
       ansible.builtin.file:
         path: /etc/rancher/k3s/config.yaml.d
@@ -77,6 +79,9 @@
         mode: "0644"
       notify: Restart K3s
 
+    # -------------------------------------------------------------
+    # Deploy Traefik HA HelmChartConfig manifest
+    # -------------------------------------------------------------
     - name: Deploy Traefik HA HelmChartConfig manifest
       when:
         - k3s_control_node | bool
@@ -86,81 +91,64 @@
         dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
         mode: "0644"
 
-  handlers:
-    - name: Restart K3s
-      ansible.builtin.systemd:
-        name: k3s
-        state: restarted
-        daemon_reload: yes
-
-- name: Configure HA Components
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  vars_files:
-    - group_vars/k3s.yml
-  vars:
-    k3s_api_server: "{{ groups['all'][0] }}"
-    local_kubeconfig: "/tmp/k3s-config-{{ k3s_api_server }}.yaml"
-  tasks:
-    - name: Fetch kubeconfig from control plane
+    # -------------------------------------------------------------
+    # Scale CoreDNS deployment to 3 replicas
+    # -------------------------------------------------------------
+    - name: Scale CoreDNS deployment to 3 replicas
+      when:
+        - k3s_control_node | bool
+        - inventory_hostname == groups['all'][0]
       ansible.builtin.command:
-        cmd: cat /etc/rancher/k3s/k3s.yaml
-      delegate_to: "{{ k3s_api_server }}"
-      register: kubeconfig_content
-      run_once: true
-      changed_when: false
+        cmd: kubectl scale deployment coredns -n kube-system --replicas=3
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: scale_result
+      changed_when: "'scaled' in scale_result.stdout"
 
-    - name: Write kubeconfig to local file
-      ansible.builtin.copy:
-        content: "{{ kubeconfig_content.stdout }}"
-        dest: "{{ local_kubeconfig }}"
-        mode: "0600"
-      run_once: true
-
-    - name: Update kubeconfig to point to the remote node IP
-      ansible.builtin.replace:
-        path: "{{ local_kubeconfig }}"
-        regexp: 'https://127.0.0.1:6443'
-        replace: "https://{{ k3s_api_server }}:6443"
-
-    - name: Configure CoreDNS HA - Replicas, Resources & Topology
-      kubernetes.core.k8s:
-        kubeconfig: "{{ local_kubeconfig }}"
-        state: present
-        merge_type: strategic-merge
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: coredns
-            namespace: kube-system
-          spec:
-            replicas: 3
-            template:
-              spec:
-                containers:
-                - name: coredns
-                  resources:
-                    requests:
-                      cpu: "200m"
-                      memory: "128Mi"
-                    limits:
-                      cpu: "200m"
-                      memory: "128Mi"
-                topologySpreadConstraints:
-                - maxSkew: 1
-                  topologyKey: kubernetes.io/hostname
-                  whenUnsatisfiable: DoNotSchedule
-                  labelSelector:
-                    matchLabels:
-                      k8s-app: kube-dns
+    - name: Configure CoreDNS resources and topology constraints
+      when:
+        - k3s_control_node | bool
+        - inventory_hostname == groups['all'][0]
+      ansible.builtin.command:
+        cmd: |
+          kubectl patch deployment coredns -n kube-system --type='strategic' -p='{
+            "spec": {
+              "template": {
+                "spec": {
+                  "containers": [{
+                    "name": "coredns",
+                    "resources": {
+                      "requests": {"cpu": "200m", "memory": "128Mi"},
+                      "limits": {"cpu": "200m", "memory": "128Mi"}
+                    }
+                  }],
+                  "topologySpreadConstraints": [{
+                    "maxSkew": 1,
+                    "topologyKey": "kubernetes.io/hostname",
+                    "whenUnsatisfiable": "DoNotSchedule",
+                    "labelSelector": {
+                      "matchLabels": {"k8s-app": "kube-dns"}
+                    }
+                  }]
+                }
+              }
+            }
+          }'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: patch_result
+      changed_when: "'patched' in patch_result.stdout"
+      failed_when:
+        - patch_result.rc != 0
+        - "'already exists' not in patch_result.stderr"
 
     - name: Apply CoreDNS PodDisruptionBudget
-      kubernetes.core.k8s:
-        kubeconfig: "{{ local_kubeconfig }}"
-        state: present
-        definition:
+      when:
+        - k3s_control_node | bool
+        - inventory_hostname == groups['all'][0]
+      ansible.builtin.command:
+        cmd: |
+          kubectl apply -f - <<EOF
           apiVersion: policy/v1
           kind: PodDisruptionBudget
           metadata:
@@ -173,3 +161,15 @@
             selector:
               matchLabels:
                 k8s-app: kube-dns
+          EOF
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: pdb_result
+      changed_when: "'created' in pdb_result.stdout or 'configured' in pdb_result.stdout"
+
+  handlers:
+    - name: Restart K3s
+      ansible.builtin.systemd:
+        name: k3s
+        state: restarted
+        daemon_reload: yes

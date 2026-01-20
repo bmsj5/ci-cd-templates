@@ -2,6 +2,10 @@
 
 This file contains secrets required for Grafana deployment and configuration.
 
+## Configuration
+
+**JSON Secrets**: Add to `ANSIBLE_EXTRA_SECRETS_JSON` secret (JSON format)
+
 ## Grafana Secrets (Via ANSIBLE_EXTRA_SECRETS_JSON)
 
 Add these secrets to the `ANSIBLE_EXTRA_SECRETS_JSON` variable:

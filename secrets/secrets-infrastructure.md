@@ -2,6 +2,13 @@
 
 This file contains secrets and variables required for infrastructure-level deployments and common across all services.
 
+## Configuration
+
+**Repository Secrets**: Set directly in GitHub repository secrets  
+**Repository Variables**: Set directly in GitHub repository variables  
+**JSON Secrets**: Add to `ANSIBLE_EXTRA_SECRETS_JSON` secret (JSON format)  
+**JSON Variables**: Add to `ANSIBLE_EXTRA_ENV_JSON` variable (JSON format)
+
 ## Infrastructure Secrets (Set Directly in GitHub)
 
 These secrets are used by the Ansible playbooks for connecting to and managing the Kubernetes cluster:

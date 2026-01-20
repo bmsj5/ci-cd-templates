@@ -82,22 +82,63 @@
         state: restarted
         daemon_reload: yes
 
-    # Deploy HA addon manifests
+    # Deploy HA configurations
     # Only run on the first control-plane node to avoid conflicts.
-    # K3s will automatically sync these manifests to other nodes.
-    - name: Deploy HA addon manifests
+    - name: Configure HA components
       when:
         - k3s_control_node | bool
         - inventory_hostname == groups['all'][0]
       block:
-        - name: Deploy CoreDNS HA addon manifest
-          ansible.builtin.template:
-            src: coredns-ha-addon.yaml.j2
-            dest: /var/lib/rancher/k3s/server/manifests/coredns-ha-addon.yaml
-            mode: "0644"
-
         - name: Deploy Traefik HA HelmChartConfig manifest
           ansible.builtin.template:
             src: traefik-ha-helmchartconfig.yaml.j2
             dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
             mode: "0644"
+
+        - name: Configure CoreDNS HA - Replicas, Resources & Topology
+          kubernetes.core.k8s:
+            state: present
+            merge_type: strategic-merge
+            definition:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: coredns
+                namespace: kube-system
+              spec:
+                replicas: 3
+                template:
+                  spec:
+                    containers:
+                    - name: coredns
+                      resources:
+                        requests:
+                          cpu: "200m"
+                          memory: "128Mi"
+                        limits:
+                          cpu: "200m"
+                          memory: "128Mi"
+                    topologySpreadConstraints:
+                    - maxSkew: 1
+                      topologyKey: kubernetes.io/hostname
+                      whenUnsatisfiable: DoNotSchedule
+                      labelSelector:
+                        matchLabels:
+                          k8s-app: kube-dns
+
+        - name: Apply CoreDNS PodDisruptionBudget
+          kubernetes.core.k8s:
+            state: present
+            definition:
+              apiVersion: policy/v1
+              kind: PodDisruptionBudget
+              metadata:
+                name: coredns
+                namespace: kube-system
+                labels:
+                  k8s-app: kube-dns
+              spec:
+                minAvailable: 2
+                selector:
+                  matchLabels:
+                    k8s-app: kube-dns

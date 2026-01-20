@@ -2,6 +2,10 @@
 
 This file contains secrets required for Vector deployment and configuration.
 
+## Configuration
+
+**JSON Secrets**: Add to `ANSIBLE_EXTRA_SECRETS_JSON` secret (JSON format)
+
 ## Required Secrets (Via ANSIBLE_EXTRA_SECRETS_JSON)
 
 Vector requires OpenObserve credentials for log export. Make sure you have configured [OpenObserve secrets](./secrets-openobserve.md):

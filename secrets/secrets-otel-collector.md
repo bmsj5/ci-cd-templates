@@ -2,6 +2,10 @@
 
 This file contains secrets required for OpenTelemetry Collector deployment and configuration.
 
+## Configuration
+
+**JSON Secrets**: Add to `ANSIBLE_EXTRA_SECRETS_JSON` secret (JSON format)
+
 ## Required Secrets (Via ANSIBLE_EXTRA_SECRETS_JSON)
 
 The OTEL Collector requires OpenObserve credentials for data export. Make sure you have configured [OpenObserve secrets](./secrets-openobserve.md):

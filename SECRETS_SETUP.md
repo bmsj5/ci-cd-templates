@@ -14,6 +14,11 @@ Secrets are organized into three categories:
 ### Infrastructure & Common
 - **[Infrastructure Secrets](./secrets/secrets-infrastructure.md)** - Core infrastructure access and common variables
 
+### Infrastructure Services
+- **[Redis Secrets](./secrets/secrets-redis.md)** - Redis caching and session storage
+- **[MongoDB Secrets](./secrets/secrets-mongodb.md)** - MongoDB database administration
+- **[RabbitMQ Secrets](./secrets/secrets-rabbitmq.md)** - RabbitMQ message queuing
+
 ### Observability Stack
 - **[OpenObserve Secrets](./secrets/secrets-openobserve.md)** - Log aggregation and analytics platform
 - **[Grafana Secrets](./secrets/secrets-grafana.md)** - Dashboard and visualization platform

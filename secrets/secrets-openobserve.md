@@ -2,9 +2,13 @@
 
 This file contains secrets required for OpenObserve deployment and integration.
 
+## Configuration
+
+**JSON Secrets**: Add to `ANSIBLE_EXTRA_SECRETS_JSON` secret (JSON format)
+
 ## OpenObserve Secrets (Via ANSIBLE_EXTRA_SECRETS_JSON)
 
-Add these secrets to the `ANSIBLE_EXTRA_SECRETS_JSON` variable:
+Add these secrets to the `ANSIBLE_EXTRA_SECRETS_JSON` secret:
 
 ```json
 {

@@ -80,9 +80,6 @@
         mode: "0644"
       notify: Restart K3s
 
-    # -------------------------------------------------------------
-    # Deploy Traefik HA HelmChartConfig manifest
-    # -------------------------------------------------------------
     - name: Deploy Traefik HA HelmChartConfig manifest
       when:
         - k3s_control_node | bool
@@ -92,9 +89,6 @@
         dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
         mode: "0644"
 
-    # -------------------------------------------------------------
-    # Deploy CoreDNS HA HelmChart Manifest
-    # -------------------------------------------------------------
     - name: Deploy CoreDNS HA HelmChart Manifest
       when:
         - k3s_control_node | bool

@@ -75,72 +75,94 @@
             - "cpu-manager-policy=static"
             - "system-reserved=cpu={{ reserved_cpu_m }}m"
         mode: "0644"
+      register: cpu_manager_config
 
-    - name: Restart K3s to apply CPU manager policy
+    - name: Restart K3s to apply CPU manager policy if config changed
       ansible.builtin.systemd:
         name: k3s
         state: restarted
         daemon_reload: yes
+      when: cpu_manager_config.changed
 
-    # Deploy HA configurations
-    # Only run on the first control-plane node to avoid conflicts.
-    - name: Configure HA components
+    - name: Deploy Traefik HA HelmChartConfig manifest
       when:
         - k3s_control_node | bool
         - inventory_hostname == groups['all'][0]
-      block:
-        - name: Deploy Traefik HA HelmChartConfig manifest
-          ansible.builtin.template:
-            src: traefik-ha-helmchartconfig.yaml.j2
-            dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
-            mode: "0644"
+      ansible.builtin.template:
+        src: traefik-ha-helmchartconfig.yaml.j2
+        dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
+        mode: "0644"
 
-        - name: Configure CoreDNS HA - Replicas, Resources & Topology
-          kubernetes.core.k8s:
-            kubeconfig: /etc/rancher/k3s/k3s.yaml
-            state: present
-            merge_type: strategic-merge
-            definition:
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: coredns
-                namespace: kube-system
-              spec:
-                replicas: 3
-                template:
-                  spec:
-                    containers:
-                    - name: coredns
-                      resources:
-                        requests:
-                          cpu: "200m"
-                          memory: "128Mi"
-                        limits:
-                          cpu: "200m"
-                          memory: "128Mi"
-                    topologySpreadConstraints:
-                    - maxSkew: 1
-                      topologyKey: kubernetes.io/hostname
-                      whenUnsatisfiable: DoNotSchedule
-                      labelSelector:
-                        matchLabels:
-                          k8s-app: kube-dns
+- name: Configure HA Components
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - group_vars/k3s.yml
+  vars:
+    k3s_api_server: "{{ groups['all'][0] }}"
+    local_kubeconfig: "/tmp/k3s-config-{{ k3s_api_server }}.yaml"
+  tasks:
+    - name: Fetch kubeconfig from control plane
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ local_kubeconfig }}"
+        flat: true
+      delegate_to: "{{ k3s_api_server }}"
+      run_once: true
 
-        - name: Apply CoreDNS PodDisruptionBudget
-          kubernetes.core.k8s:
-            kubeconfig: /etc/rancher/k3s/k3s.yaml
-            state: present
-            definition:
-              apiVersion: policy/v1
-              kind: PodDisruptionBudget
-              metadata:
-                name: coredns
-                namespace: kube-system
-                labels:
-                  k8s-app: kube-dns
+    - name: Update kubeconfig to point to the remote node IP
+      ansible.builtin.replace:
+        path: "{{ local_kubeconfig }}"
+        regexp: 'https://127.0.0.1:6443'
+        replace: "https://{{ k3s_api_server }}:6443"
+
+    - name: Configure CoreDNS HA - Replicas, Resources & Topology
+      kubernetes.core.k8s:
+        kubeconfig: "{{ local_kubeconfig }}"
+        state: present
+        merge_type: strategic-merge
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: coredns
+            namespace: kube-system
+          spec:
+            replicas: 3
+            template:
               spec:
-                minAvailable: 2
-                selector:
-                  matchLabels:
-                    k8s-app: kube-dns
+                containers:
+                - name: coredns
+                  resources:
+                    requests:
+                      cpu: "200m"
+                      memory: "128Mi"
+                    limits:
+                      cpu: "200m"
+                      memory: "128Mi"
+                topologySpreadConstraints:
+                - maxSkew: 1
+                  topologyKey: kubernetes.io/hostname
+                  whenUnsatisfiable: DoNotSchedule
+                  labelSelector:
+                    matchLabels:
+                      k8s-app: kube-dns
+
+    - name: Apply CoreDNS PodDisruptionBudget
+      kubernetes.core.k8s:
+        kubeconfig: "{{ local_kubeconfig }}"
+        state: present
+        definition:
+          apiVersion: policy/v1
+          kind: PodDisruptionBudget
+          metadata:
+            name: coredns
+            namespace: kube-system
+            labels:
+              k8s-app: kube-dns
+          spec:
+            minAvailable: 2
+            selector:
+              matchLabels:
+                k8s-app: kube-dns

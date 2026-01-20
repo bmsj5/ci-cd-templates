@@ -29,12 +29,8 @@ spec:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/name: coredns
+              app.kubernetes.io/instance: coredns
           topologyKey: kubernetes.io/hostname
 
     service:
       clusterIP: 10.43.0.10
-
-    # Enable Prometheus service monitor for production monitoring
-    prometheus:
-      monitor:
-        enabled: true

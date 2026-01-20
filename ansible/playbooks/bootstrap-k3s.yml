@@ -97,6 +97,7 @@
 
         - name: Configure CoreDNS HA - Replicas, Resources & Topology
           kubernetes.core.k8s:
+            kubeconfig: /etc/rancher/k3s/k3s.yaml
             state: present
             merge_type: strategic-merge
             definition:
@@ -128,6 +129,7 @@
 
         - name: Apply CoreDNS PodDisruptionBudget
           kubernetes.core.k8s:
+            kubeconfig: /etc/rancher/k3s/k3s.yaml
             state: present
             definition:
               apiVersion: policy/v1

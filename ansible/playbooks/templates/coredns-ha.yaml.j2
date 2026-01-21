@@ -4,9 +4,7 @@ metadata:
   name: coredns
   namespace: kube-system
 spec:
-  repo: https://coredns.github.io/helm
-  chart: coredns
-  version: 1.45.0
+  chartContent: {{ chart_content }}
   targetNamespace: kube-system
   valuesContent: |-
     isClusterService: true

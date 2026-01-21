@@ -94,11 +94,25 @@
         - k3s_control_node | bool
         - inventory_hostname == groups['all'][0]
       block:
+        - name: Copy CoreDNS chart to K3s node
+          ansible.builtin.copy:
+            src: ../../../charts/coredns-1.45.0.tgz
+            dest: /var/lib/rancher/k3s/server/manifests/coredns-1.45.0.tgz
+            mode: "0644"
+
+        - name: Read CoreDNS chart content
+          ansible.builtin.shell: |
+            base64 -w 0 /var/lib/rancher/k3s/server/manifests/coredns-1.45.0.tgz
+          register: chart_content_result
+          changed_when: false
+
         - name: Deploy CoreDNS HA HelmChart manifest
           ansible.builtin.template:
             src: coredns-ha.yaml.j2
             dest: /var/lib/rancher/k3s/server/manifests/coredns-ha.yaml
             mode: "0644"
+          vars:
+            chart_content: "{{ chart_content_result.stdout }}"
 
         - name: Configure kube-dns service
           ansible.builtin.shell: |

@@ -20,27 +20,31 @@
           {{ (num_control_nodes == '' or num_control_nodes is not defined) or
              (num_control_nodes | int > 0 and node_index < (num_control_nodes | int)) }}
     
-    - name: CoreDNS | Fetch kubeconfig to ephemeral runner
+    - name: "CoreDNS | Capture Control Plane IP"
+      ansible.builtin.set_fact:
+        # Uses whichever variable Ansible is currently using to connect
+        k3s_public_ip: "{{ ansible_host | default(ansible_ssh_host) | default(inventory_hostname) }}"
+      when: inventory_hostname == groups['all'][0]
+
+    - name: "CoreDNS | Fetch kubeconfig to ephemeral runner"
       run_once: true
       ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
         dest: "{{ playbook_dir }}/k3s-kubeconfig"
         flat: yes
-      when: 
-        - k3s_control_node | bool
-        - inventory_hostname == groups['all'][0]
-    
+      when: inventory_hostname == groups['all'][0]
+
     - name: "CoreDNS | Deploy HA Chart (Delegated to Runner)"
       delegate_to: localhost
       run_once: true
       vars:
-        k3s_api_ip: "{{ hostvars[groups['all'][0]]['ansible_host'] | default(hostvars[groups['all'][0]]['ansible_ssh_host']) }}"
+        target_api_ip: "{{ hostvars[groups['all'][0]]['k3s_public_ip'] }}"
       block:
         - name: "Prepare Kubeconfig for remote access"
           ansible.builtin.replace:
             path: "{{ playbook_dir }}/k3s-kubeconfig"
             regexp: '127\.0\.0\.1'
-            replace: "{{ k3s_api_ip }}"
+            replace: "{{ target_api_ip }}"
 
         - name: "Install CoreDNS via Helm Module"
           kubernetes.core.helm:

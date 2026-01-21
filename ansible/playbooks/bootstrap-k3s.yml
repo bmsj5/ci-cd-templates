@@ -28,31 +28,32 @@
         - name: Copy CoreDNS chart to K3s node
           ansible.builtin.copy:
             src: coredns-1.45.0.tgz
-            dest: /var/lib/rancher/k3s/server/manifests/coredns-1.45.0.tgz
+            dest: /tmp/coredns-1.45.0.tgz
             mode: "0644"
 
-        - name: Read CoreDNS chart content
-          ansible.builtin.shell: |
-            base64 -w 0 /var/lib/rancher/k3s/server/manifests/coredns-1.45.0.tgz
-          register: chart_content_result
-          changed_when: false
-
-        - name: Deploy CoreDNS HA HelmChart manifest
+        - name: Deploy CoreDNS HA values template
           ansible.builtin.template:
             src: coredns-ha.yaml.j2
-            dest: /var/lib/rancher/k3s/server/manifests/coredns-ha.yaml
+            dest: /tmp/coredns-ha-values.yaml
             mode: "0644"
-          vars:
-            chart_content: "{{ chart_content_result.stdout }}"
+
+        - name: Install HA CoreDNS using Helm CLI
+          ansible.builtin.shell: |
+            set -e
+            echo "Installing HA CoreDNS via Helm CLI..."
+
+            # Install with release name "coredns" (clean pod names)
+            helm upgrade --install coredns /tmp/coredns-1.45.0.tgz \
+              --namespace kube-system \
+              --values /tmp/coredns-ha-values.yaml \
+              --wait \
+              --timeout=5m
+          changed_when: false
 
         - name: Configure kube-dns service
           ansible.builtin.shell: |
             set -e
             echo "Configuring kube-dns service..."
-
-            # Give K3s time to process the HelmChart
-            echo "Waiting 30 seconds for K3s to process HelmChart..."
-            sleep 30
 
             # Wait for CoreDNS deployment to be ready
             kubectl wait --for=condition=available --timeout=300s deployment/coredns -n kube-system
@@ -72,8 +73,6 @@
               {"op": "add", "path": "/spec/ports/-", "value": {"name": "dns-tcp", "port": 53, "protocol": "TCP", "targetPort": 53}},
               {"op": "add", "path": "/spec/ports/-", "value": {"name": "metrics", "port": 9153, "protocol": "TCP", "targetPort": 9153}}
             ]'
-
-            echo "Service configuration completed"
           changed_when: false
 
   roles:

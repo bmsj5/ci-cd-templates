@@ -89,14 +89,53 @@
         dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
         mode: "0644"
 
-    - name: Deploy CoreDNS HA HelmChart Manifest
+    - name: Deploy HA CoreDNS using Helm CLI
       when:
         - k3s_control_node | bool
         - inventory_hostname == groups['all'][0]
-      ansible.builtin.template:
-        src: coredns-ha.yaml.j2
-        dest: /var/lib/rancher/k3s/server/manifests/coredns-ha.yaml
-        mode: "0644"
+      block:
+        - name: Deploy CoreDNS HA values template
+          ansible.builtin.template:
+            src: coredns-ha.yaml.j2
+            dest: /tmp/coredns-ha-values.yaml
+            mode: "0644"
+
+        - name: Install HA CoreDNS using Helm CLI
+          ansible.builtin.shell: |
+            set -e
+            echo "Installing HA CoreDNS via Helm CLI..."
+
+            # Add and update Helm repo
+            helm repo add coredns https://coredns.github.io/helm --force-update
+            helm repo update
+
+            helm upgrade --install coredns coredns/coredns \
+              --namespace kube-system \
+              --version 1.45.0 \
+              --values /tmp/coredns-ha-values.yaml \
+              --wait \
+              --timeout=5m
+
+        - name: Configure kube-dns service
+          ansible.builtin.shell: |
+            set -e
+            echo "Configuring kube-dns service..."
+
+            # Create kube-dns service pointing to coredns deployment
+            kubectl expose deployment coredns --name=kube-dns \
+              --type=ClusterIP \
+              --cluster-ip=10.43.0.10 \
+              --port=53 \
+              --target-port=53 \
+              --protocol=UDP \
+              -n kube-system
+
+            # Add TCP and metrics ports
+            kubectl patch svc kube-dns -n kube-system --type=json -p '[
+              {"op": "replace", "path": "/spec/ports/0", "value": {"name": "dns", "port": 53, "protocol": "UDP", "targetPort": 53}},
+              {"op": "add", "path": "/spec/ports/-", "value": {"name": "dns-tcp", "port": 53, "protocol": "TCP", "targetPort": 53}},
+              {"op": "add", "path": "/spec/ports/-", "value": {"name": "metrics", "port": 9153, "protocol": "TCP", "targetPort": 9153}}
+            ]'  
 
 
   handlers:

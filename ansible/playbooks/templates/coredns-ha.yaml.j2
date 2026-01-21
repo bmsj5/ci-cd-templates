@@ -1,36 +1,20 @@
-apiVersion: helm.cattle.io/v1
-kind: HelmChart
-metadata:
-  name: coredns
-  namespace: kube-system
-spec:
-  repo: https://coredns.github.io/helm
-  chart: coredns
-  version: 1.45.0
-  targetNamespace: kube-system
-  valuesContent: |-
-    isClusterService: true
-    
-    replicaCount: 3
+# Used by bootstrap-k3s.yml for direct Helm CLI deployment
+# Note: Service configuration is handled separately in the playbook
 
-    # Guaranteed QoS & CPU Pinning
-    resources:
-      requests:
-        cpu: 200m
-        memory: 128Mi
-      limits:
-        cpu: 200m
-        memory: 128Mi
-
-    # Ensure one pod per node topology spread
-    affinity:
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/name: coredns
-              app.kubernetes.io/instance: coredns
-          topologyKey: kubernetes.io/hostname
-
-    service:
-      clusterIP: 10.43.0.10
+isClusterService: true
+replicaCount: 3
+resources:
+  requests:
+    cpu: 200m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: coredns
+          app.kubernetes.io/instance: coredns
+      topologyKey: kubernetes.io/hostname

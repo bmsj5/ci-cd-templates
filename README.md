@@ -1,4 +1,4 @@
-# CI-CD-Templates
+# ci-cd-templates
 
 Reusable CI/CD templates and configurations for infrastructure and application deployments.
 

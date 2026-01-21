@@ -49,7 +49,7 @@
         - name: "Install CoreDNS via Helm Module"
           kubernetes.core.helm:
             name: coredns
-            chart_ref: coredns/coredns
+            chart_ref: coredns
             chart_repo_url: https://coredns.github.io/helm
             release_namespace: kube-system
             kubeconfig: "{{ playbook_dir }}/k3s-kubeconfig"

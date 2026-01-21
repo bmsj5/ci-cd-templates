@@ -85,8 +85,8 @@
         - k3s_control_node | bool
         - inventory_hostname == groups['all'][0]
       ansible.builtin.template:
-        src: traefik-ha-helmchartconfig.yaml.j2
-        dest: /var/lib/rancher/k3s/server/manifests/traefik-ha-helmchartconfig.yaml
+        src: traefik-ha.yaml.j2
+        dest: /var/lib/rancher/k3s/server/manifests/traefik-ha.yaml
         mode: "0644"
 
     - name: Deploy HA CoreDNS using Helm CLI

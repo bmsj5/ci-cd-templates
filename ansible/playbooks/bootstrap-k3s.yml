@@ -94,33 +94,19 @@
         - k3s_control_node | bool
         - inventory_hostname == groups['all'][0]
       block:
-        - name: Deploy CoreDNS HA values template
+        - name: Deploy CoreDNS HA HelmChart manifest
           ansible.builtin.template:
             src: coredns-ha.yaml.j2
-            dest: /tmp/coredns-ha-values.yaml
+            dest: /var/lib/rancher/k3s/server/manifests/coredns-ha.yaml
             mode: "0644"
-
-        - name: Install HA CoreDNS using Helm CLI
-          ansible.builtin.shell: |
-            set -e
-            echo "Installing HA CoreDNS via Helm CLI..."
-
-            # Add and update Helm repo
-            helm repo add coredns https://coredns.github.io/helm --force-update
-            helm repo update
-
-            helm upgrade --install coredns coredns/coredns \
-              --namespace kube-system \
-              --version 1.45.0 \
-              --values /tmp/coredns-ha-values.yaml \
-              --wait \
-              --timeout=5m
-          changed_when: false 
 
         - name: Configure kube-dns service
           ansible.builtin.shell: |
             set -e
             echo "Configuring kube-dns service..."
+
+            # Wait for CoreDNS deployment to be ready
+            kubectl wait --for=condition=available --timeout=300s deployment/coredns -n kube-system
 
             # Create kube-dns service pointing to coredns deployment
             kubectl expose deployment coredns --name=kube-dns \

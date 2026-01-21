@@ -19,41 +19,6 @@
         k3s_control_node: >-
           {{ (num_control_nodes == '' or num_control_nodes is not defined) or
              (num_control_nodes | int > 0 and node_index < (num_control_nodes | int)) }}
-    
-    - name: CoreDNS | Capture Control Plane IP
-      ansible.builtin.set_fact:
-        k3s_public_ip: "{{ ansible_host | default(ansible_ssh_host) | default(inventory_hostname) }}"
-      when: inventory_hostname == groups['all'][0]
-
-    - name: CoreDNS | Fetch kubeconfig to ephemeral runner
-      run_once: true
-      ansible.builtin.fetch:
-        src: /etc/rancher/k3s/k3s.yaml
-        dest: "{{ playbook_dir }}/k3s-kubeconfig"
-        flat: yes
-      when: inventory_hostname == groups['all'][0]
-
-    - name: CoreDNS | Deploy HA Chart (Delegated to Runner)
-      delegate_to: localhost
-      run_once: true
-      vars:
-        target_api_ip: "{{ hostvars[groups['all'][0]]['k3s_public_ip'] }}"
-      block:
-        - name: Prepare Kubeconfig for remote access
-          ansible.builtin.replace:
-            path: "{{ playbook_dir }}/k3s-kubeconfig"
-            regexp: '127\.0\.0\.1'
-            replace: "{{ target_api_ip }}"
-
-        - name: Install CoreDNS via Helm Module
-          kubernetes.core.helm:
-            name: coredns
-            chart_ref: coredns
-            chart_repo_url: https://coredns.github.io/helm
-            release_namespace: kube-system
-            kubeconfig: "{{ playbook_dir }}/k3s-kubeconfig"
-            wait: true
-            values: "{{ lookup('template', 'templates/coredns-ha.yaml.j2') | from_yaml }}"
 
   roles:
     - role: xanmanning.k3s
@@ -115,6 +80,9 @@
         mode: "0644"
       notify: Restart K3s
 
+    # -------------------------------------------------------------
+    # Deploy Traefik HA HelmChartConfig manifest
+    # -------------------------------------------------------------
     - name: Deploy Traefik HA HelmChartConfig manifest
       when:
         - k3s_control_node | bool
@@ -123,7 +91,44 @@
         src: traefik-ha.yaml.j2
         dest: /var/lib/rancher/k3s/server/manifests/traefik-ha.yaml
         mode: "0644"
+    
+    # -------------------------------------------------------------
+    # Deploy CoreDNS HA via Helm Module
+    # -------------------------------------------------------------
+    - name: CoreDNS helm | Capture Control Plane IP
+      ansible.builtin.set_fact:
+        k3s_public_ip: "{{ ansible_host | default(ansible_ssh_host) | default(inventory_hostname) }}"
+      when: inventory_hostname == groups['all'][0]
 
+    - name: CoreDNS helm | Fetch kubeconfig to ephemeral runner
+      run_once: true
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ playbook_dir }}/k3s-kubeconfig"
+        flat: yes
+      when: inventory_hostname == groups['all'][0]
+
+    - name: CoreDNS helm | Deploy HA Chart
+      delegate_to: localhost
+      run_once: true
+      vars:
+        target_api_ip: "{{ hostvars[groups['all'][0]]['k3s_public_ip'] }}"
+      block:
+        - name: CoreDNS helm | Prepare Kubeconfig for remote access
+          ansible.builtin.replace:
+            path: "{{ playbook_dir }}/k3s-kubeconfig"
+            regexp: '127\.0\.0\.1'
+            replace: "{{ target_api_ip }}"
+
+        - name: CoreDNS helm | Install CoreDNS via Helm Module
+          kubernetes.core.helm:
+            name: coredns
+            chart_ref: coredns
+            chart_repo_url: https://coredns.github.io/helm
+            release_namespace: kube-system
+            kubeconfig: "{{ playbook_dir }}/k3s-kubeconfig"
+            wait: true
+            values: "{{ lookup('template', 'templates/coredns-ha.yaml.j2') | from_yaml }}"
 
   handlers:
     - name: Restart K3s

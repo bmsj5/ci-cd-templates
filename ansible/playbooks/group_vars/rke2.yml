@@ -2,7 +2,7 @@
 # These variables are used by the bootstrap-rke2.yml playbook
 
 # RKE2 version and basic configuration
-rke2_version: v1.30.0+rke2r1
+rke2_version: v1.35.0+rke2r1
 rke2_token: "{{ lookup('env', 'RKE2_TOKEN') }}"
 rke2_build_cluster: true
 

@@ -12,6 +12,7 @@ RUN apt-get update && \
         openssh-client \
         curl \
         jq \
+        git \
         # Add necessary APT packages for the final image here too, if possible
         && rm -rf /var/lib/apt/lists/* # Typo fixed
 

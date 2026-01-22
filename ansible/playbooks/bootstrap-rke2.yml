@@ -18,7 +18,12 @@
       ansible.builtin.set_fact:
         rke2_control_node: >-
           {{ (num_control_nodes == '' or num_control_nodes is not defined) or
-             (num_control_nodes | int > 0 and node_index < (num_control_nodes | int)) }}
+             (num_control_nodes | int > 0 and node_index | int < (num_control_nodes | int)) }}
+
+    - name: Dynamically create rke2_servers group
+      ansible.builtin.group_by:
+        key: rke2_servers
+      when: rke2_control_node | bool
 
     - name: Get number of CPU cores for GKE-style reservations
       ansible.builtin.command: nproc

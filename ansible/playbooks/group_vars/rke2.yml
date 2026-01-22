@@ -9,7 +9,6 @@ rke2_build_cluster: true
 # RKE2 server configuration
 # This generates /etc/rancher/rke2/config.yaml
 rke2_config:
-  # Networking
   cni: cilium
 
   # Kubeconfig permissions
@@ -21,12 +20,9 @@ rke2_config:
     - "cpu-manager-policy=static"
     - "system-reserved=cpu={{ reserved_cpu_m }}m"
 
-  # Ingress Controller
   ingress-controller: traefik
 
-  # Disable components we don't want
   disable:
-    - rke2-ingress-nginx  # We use Traefik instead
-    - rke2-metrics-server  # May provide custom version later
-    - rke2-snapshot-controller  # Disable if not needed
-    - rke2-snapshot-validation-webhook  # Disable if not needed
+    - rke2-ingress-nginx 
+    - rke2-snapshot-controller 
+    - rke2-snapshot-validation-webhook 

@@ -2,7 +2,7 @@
   hosts: all
   become: true
   vars_files:
-    - group_vars/all.yml
+    - group_vars/rke2.yml
 
   pre_tasks:
     - name: Get number of control plane nodes from environment

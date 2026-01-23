@@ -1,6 +1,7 @@
 - name: Bootstrap HA RKE2 Cluster
   hosts: all
   become: true
+  gather_facts: false  # Disable problematic setup module
   vars_files:
     - group_vars/rke2.yml
   vars:
@@ -9,6 +10,13 @@
     ansible_ssh_control_path: ""
 
   pre_tasks:
+    # Manual fact gathering to replace the problematic setup module
+    - name: Gather basic facts manually
+      ansible.builtin.set_fact:
+        ansible_distribution: "{{ lookup('pipe', 'lsb_release -si 2>/dev/null || cat /etc/os-release | grep ^ID= | cut -d= -f2 | tr -d \\"', ignore_errors=True) | default('unknown') }}"
+        ansible_distribution_major_version: "{{ lookup('pipe', 'lsb_release -sr 2>/dev/null || cat /etc/os-release | grep ^VERSION_ID= | cut -d= -f2 | cut -d. -f1 | tr -d \\"', ignore_errors=True) | default('unknown') }}"
+        ansible_architecture: "{{ lookup('pipe', 'uname -m', ignore_errors=True) | default('unknown') }}"
+
     - name: DEBUG - Check SSH connection settings
       debug:
         msg: |
@@ -26,18 +34,42 @@
       debug:
         var: ssh_test.stdout
 
-    - name: DEBUG - Test complex command pattern (similar to Ansible's temp dir creation)
-      command: umask 77 && mkdir -p "$(echo /tmp)" && mkdir "$(echo /tmp/ansible-test-dir)" && echo "Complex command test successful"
-      register: complex_cmd_test
+    - name: DEBUG - Test remote shell environment
+      shell: |
+        echo "=== Shell Information ==="
+        echo "SHELL: $SHELL"
+        echo "PATH: $PATH"
+        echo "USER: $(whoami)"
+        echo "PWD: $(pwd)"
+        echo ""
+        echo "=== Testing command components ==="
+        echo "umask test:" && umask 77 && echo "umask OK"
+        echo "echo test:" && echo "/tmp" && echo "echo OK"
+        echo "mkdir test:" && mkdir -p /tmp/test-debug-dir && echo "mkdir OK" && rm -rf /tmp/test-debug-dir
+        echo ""
+        echo "=== Testing backtick execution ==="
+        result=$(echo "/tmp")
+        echo "Backtick result: $result"
+        echo "Backtick test: $([ "$result" = "/tmp" ] && echo "SUCCESS" || echo "FAILED")"
+      register: shell_debug
       ignore_errors: true
 
-    - name: DEBUG - Show complex command test result
+    - name: DEBUG - Show shell debug results
+      debug:
+        msg: "{{ shell_debug.stdout | default('NO OUTPUT') }}"
+
+    - name: DEBUG - Test exact Ansible temp dir command
+      shell: eval '( umask 77 && mkdir -p "` echo /tmp `" && mkdir "` echo /tmp/ansible-test `" && echo ansible-test="` echo /tmp/ansible-test `" )'
+      register: ansible_cmd_test
+      ignore_errors: true
+
+    - name: DEBUG - Show Ansible command test result
       debug:
         msg: |
-          Complex command test result:
-          - rc: {{ complex_cmd_test.rc | default('undefined') }}
-          - stdout: {{ complex_cmd_test.stdout | default('undefined') }}
-          - stderr: {{ complex_cmd_test.stderr | default('undefined') }}
+          Ansible-style command test:
+          - rc: {{ ansible_cmd_test.rc | default('undefined') }}
+          - stdout: {{ ansible_cmd_test.stdout | default('undefined') }}
+          - stderr: {{ ansible_cmd_test.stderr | default('undefined') }}
 
     - name: Get number of control plane nodes from environment
       ansible.builtin.set_fact:

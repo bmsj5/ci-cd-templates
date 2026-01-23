@@ -4,6 +4,8 @@
 # RKE2 version and basic configuration
 rke2_version: v1.35.0+rke2r1
 rke2_token: "{{ lookup('env', 'RKE2_TOKEN') }}"
+rke2_servers_group_name: rke2_servers  # Tell lablabs.rke2 which group contains servers
+rke2_ha_mode: true
 
 # RKE2 configuration (lablabs.rke2 format)
 rke2_config:

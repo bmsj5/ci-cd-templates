@@ -1,7 +1,6 @@
 - name: Bootstrap HA RKE2 Cluster
   hosts: all
   become: true
-  gather_facts: false  # Disable problematic setup module
   vars_files:
     - group_vars/rke2.yml
   vars:
@@ -10,13 +9,6 @@
     ansible_ssh_control_path: ""
 
   pre_tasks:
-    # Manual fact gathering to replace the problematic setup module
-    - name: Gather basic facts manually
-      ansible.builtin.set_fact:
-        ansible_distribution: "{{ lookup('pipe', 'lsb_release -si 2>/dev/null || cat /etc/os-release | grep ^ID= | cut -d= -f2 | tr -d \\"', ignore_errors=True) | default('unknown') }}"
-        ansible_distribution_major_version: "{{ lookup('pipe', 'lsb_release -sr 2>/dev/null || cat /etc/os-release | grep ^VERSION_ID= | cut -d= -f2 | cut -d. -f1 | tr -d \\"', ignore_errors=True) | default('unknown') }}"
-        ansible_architecture: "{{ lookup('pipe', 'uname -m', ignore_errors=True) | default('unknown') }}"
-
     - name: DEBUG - Check SSH connection settings
       debug:
         msg: |

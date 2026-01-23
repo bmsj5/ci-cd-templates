@@ -9,6 +9,36 @@
     ansible_ssh_control_path: ""
 
   pre_tasks:
+    - name: DEBUG - Check SSH connection settings
+      debug:
+        msg: |
+          SSH Settings:
+          - ansible_ssh_pipelining: {{ ansible_ssh_pipelining | default('undefined') }}
+          - ansible_ssh_control_path: {{ ansible_ssh_control_path | default('undefined') }}
+          - ansible_connection: {{ ansible_connection | default('undefined') }}
+          - ansible_ssh_executable: {{ ansible_ssh_executable | default('undefined') }}
+
+    - name: DEBUG - Test simple SSH command
+      command: echo "SSH test successful"
+      register: ssh_test
+
+    - name: DEBUG - Show SSH test result
+      debug:
+        var: ssh_test.stdout
+
+    - name: DEBUG - Test complex command pattern (similar to Ansible's temp dir creation)
+      command: umask 77 && mkdir -p "$(echo /tmp)" && mkdir "$(echo /tmp/ansible-test-dir)" && echo "Complex command test successful"
+      register: complex_cmd_test
+      ignore_errors: true
+
+    - name: DEBUG - Show complex command test result
+      debug:
+        msg: |
+          Complex command test result:
+          - rc: {{ complex_cmd_test.rc | default('undefined') }}
+          - stdout: {{ complex_cmd_test.stdout | default('undefined') }}
+          - stderr: {{ complex_cmd_test.stderr | default('undefined') }}
+
     - name: Get number of control plane nodes from environment
       ansible.builtin.set_fact:
         num_control_nodes: "{{ lookup('env', 'NUMBER_OF_CONTROL_PLANE_NODES') | default('', true) }}"

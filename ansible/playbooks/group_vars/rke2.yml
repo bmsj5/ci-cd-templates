@@ -1,24 +1,25 @@
 # RKE2 Cluster Configuration Variables
 # These variables are used by the bootstrap-rke2.yml playbook
 
+# RKE2 Cluster Configuration Variables
+# These variables are used by the bootstrap-rke2.yml playbook
+
 # RKE2 version and basic configuration
 rke2_version: v1.35.0+rke2r1
 rke2_token: "{{ lookup('env', 'RKE2_TOKEN') }}"
-rke2_servers_group_name: rke2_servers  # Tell lablabs.rke2 which group contains servers
+rke2_servers_group_name: rke2_servers
+rke2_cluster_group_name: rke2_servers
 rke2_ha_mode: true
 
 # RKE2 configuration (lablabs.rke2 format)
-rke2_config:
-  cni: cilium
-  write-kubeconfig-mode: "0644"
-  ingress-controller: traefik
-  disable:
-    - rke2-ingress-nginx
-    - rke2-snapshot-controller
-    - rke2-snapshot-validation-webhook
+rke2_cni: [cilium]
+rke2_ingress_controller: traefik
+rke2_disable:
+  - rke2-ingress-nginx
+  - rke2-snapshot-controller
+  - rke2-snapshot-validation-webhook
 
 # CPU Manager Policy with GKE-style system reservations
-rke2_server_options:
-  kubelet-arg:
-    - "cpu-manager-policy=static"
-    - "system-reserved=cpu={{ reserved_cpu_m }}m" 
+rke2_kubelet_arg:
+  - "cpu-manager-policy=static"
+  - "system-reserved=cpu={{ reserved_cpu_m }}m" 

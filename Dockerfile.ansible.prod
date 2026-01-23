@@ -28,10 +28,10 @@ RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | b
 
 # 3. Install Python dependencies and wheels
 COPY ansible/requirements.yml .
-RUN pip install ansible
+RUN pip install ansible netaddr
 RUN ansible-galaxy collection install -r requirements.yml && \
     ansible-galaxy role install -r requirements.yml
-RUN pip wheel --no-cache-dir --wheel-dir /wheels ansible ansible-lint kubernetes
+RUN pip wheel --no-cache-dir --wheel-dir /wheels ansible ansible-lint kubernetes netaddr
 
 # === FINAL STAGE ===
 FROM python:3.13-slim
@@ -49,6 +49,7 @@ RUN apt-get update && \
         openssl \
         rsync \
         git \
+        keepalived \
         && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
